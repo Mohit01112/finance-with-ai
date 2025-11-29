@@ -1,0 +1,88 @@
+// schema.prisma
+
+// 1. Database Connection
+// We are using PostgreSQL as requested.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 2. ORM Generator
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- CORE MODELS ---
+
+// 1. User Model (for Authentication)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String   // Stored as a hashed value
+  firstName String?
+  lastName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  transactions Transaction[]
+  budgets      Budget[]
+}
+
+// 2. Transaction Model (Core Data for all AI/ML tasks)
+// This model will feed the NLP (categorization), LSTM (forecasting), and
+// Isolation Forest (fraud detection) models.
+model Transaction {
+  id              String    @id @default(uuid())
+  userId          String    // Foreign Key to User
+  user            User      @relation(fields: [userId], references: [id])
+  
+  description     String    // Input text (e.g., "Starbucks coffee") for NLP
+  amount          Decimal   @db.Decimal(10, 2)
+  type            String    // 'Expense' or 'Income'
+  date            DateTime  @default(now())
+  
+  // Category detected by the NLP Model (or manually selected)
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id])
+  
+  // Flags for AI Models
+  isPredicted     Boolean   @default(false) // For LSTM forecasting
+  isAnomaly       Boolean   @default(false) // For Isolation Forest (Fraud Detection)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 3. Category Model
+// Stores categories that the NLP model will predict.
+model Category {
+  id           String        @id @default(uuid())
+  name         String        @unique // e.g., 'Groceries', 'Transport', 'Salary'
+  type         String        // 'Expense' or 'Income'
+  transactions Transaction[]
+}
+
+// 4. Budget Model (for Budget Planning module)
+model Budget {
+  id        String    @id @default(uuid())
+  userId    String    // Foreign Key to User
+  user      User      @relation(fields: [userId], references: [id])
+  
+  // Budget period
+  startDate DateTime
+  endDate   DateTime
+  
+  // Budget details
+  amount    Decimal   @db.Decimal(10, 2) // Total budget for the period
+  
+  // Optional: Link to a specific category (e.g., $200 for 'Groceries')
+  // If null, it's a total monthly budget.
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], name: "BudgetCategory")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startDate, endDate]) // Optimizing common queries
+}
